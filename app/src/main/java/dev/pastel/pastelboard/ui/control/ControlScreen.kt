@@ -1,13 +1,7 @@
 package dev.pastel.pastelboard.ui.control
 
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -27,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.BluetoothConnected
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Keyboard
+import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.TouchApp
 import androidx.compose.material3.Button
@@ -38,15 +33,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -59,13 +48,11 @@ import dev.pastel.pastelboard.bluetooth.HidModifier
 import dev.pastel.pastelboard.bluetooth.HidUsage
 import dev.pastel.pastelboard.ui.components.GlassSurface
 import dev.pastel.pastelboard.ui.components.PastelBackground
-import kotlin.math.PI
-import kotlin.math.cos
-import kotlin.math.sin
 
 @Composable
 fun ControlScreen(
     state: PastelBoardUiState,
+    onOpenMenu: () -> Unit,
     onSelectMode: (ControlMode) -> Unit,
     onOpenSettings: () -> Unit,
     onDisconnect: () -> Unit,
@@ -81,11 +68,12 @@ fun ControlScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+                .padding(10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             ControlTopBar(
                 state = state,
+                onOpenMenu = onOpenMenu,
                 onSelectMode = onSelectMode,
                 onOpenSettings = onOpenSettings,
                 onDisconnect = onDisconnect,
@@ -97,9 +85,9 @@ fun ControlScreen(
                     onClickPointer = onClickPointer,
                 )
 
-                ControlMode.Keyboard -> LaptopKeyboard(
+                ControlMode.Keyboard -> PastelKeyboardDeck(
                     state = state,
-                    onPressKey = onPressKey,
+                    sendKey = onPressKey,
                 )
             }
         }
@@ -109,6 +97,7 @@ fun ControlScreen(
 @Composable
 private fun ControlTopBar(
     state: PastelBoardUiState,
+    onOpenMenu: () -> Unit,
     onSelectMode: (ControlMode) -> Unit,
     onOpenSettings: () -> Unit,
     onDisconnect: () -> Unit,
@@ -116,29 +105,28 @@ private fun ControlTopBar(
     GlassSurface(
         modifier = Modifier
             .fillMaxWidth()
-            .height(66.dp),
-        cornerRadius = 28,
+            .height(58.dp),
+        cornerRadius = 24,
     ) {
         Row(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 16.dp),
+                .padding(horizontal = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                IconButton(onClick = onOpenMenu) {
+                    Icon(Icons.Rounded.Menu, contentDescription = "菜单")
+                }
                 Box(
                     modifier = Modifier
-                        .size(42.dp)
+                        .size(38.dp)
                         .clip(CircleShape)
-                        .background(
-                            Brush.linearGradient(
-                                listOf(state.palette.gradientStart, state.palette.gradientEnd),
-                            ),
-                        ),
+                        .background(Brush.linearGradient(listOf(state.palette.gradientStart, state.palette.gradientEnd))),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
@@ -154,7 +142,7 @@ private fun ControlTopBar(
                         fontWeight = FontWeight.Bold,
                     )
                     Text(
-                        text = "固定顶部栏 · 可切换触控板和键盘",
+                        text = "固定顶部栏 · 触控板 / 键盘",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -163,7 +151,7 @@ private fun ControlTopBar(
 
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 ModeChip(
                     selected = state.controlMode == ControlMode.Touchpad,
@@ -217,22 +205,22 @@ private fun TouchpadPanel(
 ) {
     Row(
         modifier = Modifier.fillMaxSize(),
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Box(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxHeight()
-                .clip(RoundedCornerShape(36.dp))
+                .clip(RoundedCornerShape(34.dp))
                 .background(
                     Brush.linearGradient(
                         listOf(
-                            state.palette.keyTop.copy(alpha = 0.82f),
-                            state.palette.keySide.copy(alpha = 0.82f),
+                            state.palette.keyTop.copy(alpha = 0.84f),
+                            state.palette.keySide.copy(alpha = 0.84f),
                         ),
                     ),
                 )
-                .border(2.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f), RoundedCornerShape(36.dp))
+                .border(2.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f), RoundedCornerShape(34.dp))
                 .pointerInput(Unit) {
                     detectDragGestures { change, dragAmount: Offset ->
                         change.consume()
@@ -245,7 +233,7 @@ private fun TouchpadPanel(
                 Icon(
                     Icons.Rounded.TouchApp,
                     contentDescription = null,
-                    modifier = Modifier.size(62.dp),
+                    modifier = Modifier.size(64.dp),
                     tint = MaterialTheme.colorScheme.primary,
                 )
                 Spacer(Modifier.height(12.dp))
@@ -262,15 +250,15 @@ private fun TouchpadPanel(
         }
 
         Column(
-            modifier = Modifier.width(148.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.width(138.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Button(
                 onClick = { onClickPointer(1) },
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
-                shape = RoundedCornerShape(30.dp),
+                shape = RoundedCornerShape(28.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
             ) {
                 Text("左键")
@@ -280,7 +268,7 @@ private fun TouchpadPanel(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
-                shape = RoundedCornerShape(30.dp),
+                shape = RoundedCornerShape(28.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary),
             ) {
                 Text("右键")
@@ -288,189 +276,3 @@ private fun TouchpadPanel(
         }
     }
 }
-
-@Composable
-private fun LaptopKeyboard(
-    state: PastelBoardUiState,
-    onPressKey: (HidUsage?, Set<HidModifier>) -> Unit,
-) {
-    val playKeySound = rememberKeySoundPlayer(state.keySoundEnabled)
-    val rows = listOf(
-        listOf(
-            KeySpec("Esc", HidUsage.Escape, 1f), KeySpec("F1", HidUsage.F1), KeySpec("F2", HidUsage.F2),
-            KeySpec("F3", HidUsage.F3), KeySpec("F4", HidUsage.F4), KeySpec("F5", HidUsage.F5),
-            KeySpec("F6", HidUsage.F6), KeySpec("F7", HidUsage.F7), KeySpec("F8", HidUsage.F8),
-            KeySpec("F9", HidUsage.F9), KeySpec("F10", HidUsage.F10), KeySpec("F11", HidUsage.F11),
-            KeySpec("F12", HidUsage.F12),
-        ),
-        listOf(
-            KeySpec("`", HidUsage.Grave), KeySpec("1", HidUsage.Num1), KeySpec("2", HidUsage.Num2),
-            KeySpec("3", HidUsage.Num3), KeySpec("4", HidUsage.Num4), KeySpec("5", HidUsage.Num5),
-            KeySpec("6", HidUsage.Num6), KeySpec("7", HidUsage.Num7), KeySpec("8", HidUsage.Num8),
-            KeySpec("9", HidUsage.Num9), KeySpec("0", HidUsage.Num0), KeySpec("-", HidUsage.Minus),
-            KeySpec("=", HidUsage.Equal), KeySpec("⌫", HidUsage.Backspace, 1.7f),
-        ),
-        listOf(
-            KeySpec("Tab", HidUsage.Tab, 1.4f), KeySpec("Q", HidUsage.Q), KeySpec("W", HidUsage.W),
-            KeySpec("E", HidUsage.E), KeySpec("R", HidUsage.R), KeySpec("T", HidUsage.T),
-            KeySpec("Y", HidUsage.Y), KeySpec("U", HidUsage.U), KeySpec("I", HidUsage.I),
-            KeySpec("O", HidUsage.O), KeySpec("P", HidUsage.P), KeySpec("[", HidUsage.LeftBracket),
-            KeySpec("]", HidUsage.RightBracket), KeySpec("\\", HidUsage.Backslash, 1.3f),
-        ),
-        listOf(
-            KeySpec("Caps", HidUsage.CapsLock, 1.7f), KeySpec("A", HidUsage.A), KeySpec("S", HidUsage.S),
-            KeySpec("D", HidUsage.D), KeySpec("F", HidUsage.F), KeySpec("G", HidUsage.G),
-            KeySpec("H", HidUsage.H), KeySpec("J", HidUsage.J), KeySpec("K", HidUsage.K),
-            KeySpec("L", HidUsage.L), KeySpec(";", HidUsage.Semicolon), KeySpec("'", HidUsage.Apostrophe),
-            KeySpec("Enter", HidUsage.Enter, 1.9f),
-        ),
-        listOf(
-            KeySpec("Shift", null, 2.1f, setOf(HidModifier.LeftShift)), KeySpec("Z", HidUsage.Z),
-            KeySpec("X", HidUsage.X), KeySpec("C", HidUsage.C), KeySpec("V", HidUsage.V),
-            KeySpec("B", HidUsage.B), KeySpec("N", HidUsage.N), KeySpec("M", HidUsage.M),
-            KeySpec(",", HidUsage.Comma), KeySpec(".", HidUsage.Dot), KeySpec("/", HidUsage.Slash),
-            KeySpec("↑", HidUsage.ArrowUp), KeySpec("Shift", null, 1.7f, setOf(HidModifier.RightShift)),
-        ),
-        listOf(
-            KeySpec("Ctrl", null, 1.2f, setOf(HidModifier.LeftCtrl)),
-            KeySpec("Alt", null, 1.2f, setOf(HidModifier.LeftAlt)),
-            KeySpec("Space", HidUsage.Space, 5.8f),
-            KeySpec("Alt", null, 1.2f, setOf(HidModifier.RightAlt)),
-            KeySpec("←", HidUsage.ArrowLeft), KeySpec("↓", HidUsage.ArrowDown), KeySpec("→", HidUsage.ArrowRight),
-        ),
-    )
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .clip(RoundedCornerShape(34.dp))
-            .background(
-                Brush.linearGradient(
-                    listOf(state.palette.gradientStart, state.palette.gradientEnd),
-                ),
-            )
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        rows.forEach { row ->
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                row.forEach { spec ->
-                    KeyboardKey(
-                        spec = spec,
-                        modifier = Modifier.weight(spec.weight),
-                        playKeySound = playKeySound,
-                        onPressKey = onPressKey,
-                    )
-                }
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun KeyboardKey(
-    spec: KeySpec,
-    modifier: Modifier = Modifier,
-    playKeySound: () -> Unit,
-    onPressKey: (HidUsage?, Set<HidModifier>) -> Unit,
-) {
-    var burstToken by remember { mutableStateOf(0) }
-    val burstProgress = remember { Animatable(1f) }
-
-    LaunchedEffect(burstToken) {
-        if (burstToken == 0) return@LaunchedEffect
-        burstProgress.snapTo(0f)
-        burstProgress.animateTo(
-            targetValue = 1f,
-            animationSpec = tween(durationMillis = 520, easing = FastOutSlowInEasing),
-        )
-    }
-
-    fun press() {
-        burstToken += 1
-        playKeySound()
-        onPressKey(spec.usage, spec.modifiers)
-    }
-
-    Box(
-        modifier = modifier
-            .fillMaxHeight()
-            .shadow(5.dp, RoundedCornerShape(16.dp))
-            .clip(RoundedCornerShape(16.dp))
-            .background(
-                Brush.linearGradient(
-                    listOf(
-                        Color.White.copy(alpha = 0.72f),
-                        MaterialTheme.colorScheme.surface.copy(alpha = 0.58f),
-                    ),
-                ),
-            )
-            .border(1.dp, Color.White.copy(alpha = 0.46f), RoundedCornerShape(16.dp))
-            .combinedClickable(
-                onClick = { press() },
-                onLongClick = { press() },
-            ),
-        contentAlignment = Alignment.Center,
-    ) {
-        GoldenFirework(
-            progress = burstProgress.value,
-            modifier = Modifier.fillMaxSize(),
-        )
-        Text(
-            text = spec.label,
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-    }
-}
-
-@Composable
-private fun GoldenFirework(progress: Float, modifier: Modifier = Modifier) {
-    if (progress >= 1f) return
-
-    Canvas(modifier = modifier) {
-        val center = Offset(size.width / 2f, size.height / 2f)
-        val alpha = (1f - progress).coerceIn(0f, 1f)
-        val radius = 8f + progress * size.minDimension * 0.54f
-        drawCircle(
-            color = Color(0xFFFFF2A8).copy(alpha = alpha * 0.34f),
-            radius = radius * 0.42f,
-            center = center,
-        )
-        repeat(14) { index ->
-            val angle = (PI * 2.0 * index / 14.0).toFloat()
-            val distance = radius * (0.46f + (index % 3) * 0.08f)
-            val sparkX = (cos(angle.toDouble()) * distance).toFloat()
-            val sparkY = (sin(angle.toDouble()) * distance).toFloat()
-            val sparkCenter = Offset(
-                x = center.x + sparkX,
-                y = center.y + sparkY,
-            )
-            drawCircle(
-                color = Color(0xFFFFCF4D).copy(alpha = alpha),
-                radius = 2.2f + (index % 4),
-                center = sparkCenter,
-            )
-            drawLine(
-                color = Color(0xFFFFE89A).copy(alpha = alpha * 0.72f),
-                start = center,
-                end = sparkCenter,
-                strokeWidth = 1.4f,
-            )
-        }
-    }
-}
-
-private data class KeySpec(
-    val label: String,
-    val usage: HidUsage?,
-    val weight: Float = 1f,
-    val modifiers: Set<HidModifier> = emptySet(),
-)

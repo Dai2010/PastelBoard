@@ -93,7 +93,7 @@ fun PastelBackground(
 @Composable
 fun SoftCard(
     modifier: Modifier = Modifier,
-    contentPadding: PaddingValues = PaddingValues(18.dp),
+    contentPadding: PaddingValues = PaddingValues(22.dp),
     content: @Composable ColumnScope.() -> Unit,
 ) {
     ElevatedCard(
@@ -105,7 +105,7 @@ fun SoftCard(
         ),
         shape = RoundedCornerShape(30.dp),
         colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.58f),
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
         ),
         content = {
             Column(
@@ -119,8 +119,8 @@ fun SoftCard(
                     .background(
                         Brush.linearGradient(
                             listOf(
-                                Color.White.copy(alpha = 0.32f),
-                                MaterialTheme.colorScheme.surface.copy(alpha = 0.26f),
+                                Color.White.copy(alpha = 0.42f),
+                                MaterialTheme.colorScheme.surface.copy(alpha = 0.36f),
                             ),
                         ),
                     )
@@ -150,7 +150,7 @@ fun GlassSurface(
                 Brush.linearGradient(
                     listOf(
                         Color.White.copy(alpha = 0.38f),
-                        MaterialTheme.colorScheme.surface.copy(alpha = 0.42f),
+                        MaterialTheme.colorScheme.surface.copy(alpha = 0.58f),
                     ),
                 ),
             )

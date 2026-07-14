@@ -75,6 +75,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         mutableUiState.update { it.copy(screen = Screen.Settings) }
     }
 
+    fun openKeyboardTest() {
+        mutableUiState.update { it.copy(screen = Screen.KeyboardTest) }
+    }
+
+    fun openControl() {
+        mutableUiState.update { it.copy(screen = if (it.selectedDevice == null) Screen.KeyboardTest else Screen.Control) }
+    }
+
+    fun openHome() {
+        mutableUiState.update { it.copy(screen = Screen.Home) }
+    }
+
     fun backHome() {
         mutableUiState.update { it.copy(screen = if (it.selectedDevice == null) Screen.Home else Screen.Control) }
     }
@@ -88,6 +100,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val next = it.copy(
                 palette = palette,
                 hexInput = palette.primary.toHexString(),
+                keyColor = palette.keyTop,
+                keyHexInput = palette.keyTop.toHexString(),
                 colorMessage = "已切换到「${palette.label}」",
             )
             persistAppearance(next)
@@ -163,6 +177,66 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun setKeySoundUri(uri: String?) {
+        mutableUiState.update {
+            val next = it.copy(
+                keySoundUri = uri,
+                keySoundMessage = if (uri == null) "已恢复默认 Flick 感按键音" else "自定义按键音已应用",
+            )
+            persistAppearance(next)
+            next
+        }
+    }
+
+    fun updateKeyHexInput(value: String) {
+        val cleaned = value.trim().take(9)
+        mutableUiState.update { it.copy(keyHexInput = cleaned, keyColorMessage = null) }
+    }
+
+    fun applyKeyHexColor() {
+        val color = parseHexColor(mutableUiState.value.keyHexInput)
+        mutableUiState.update {
+            if (color == null) {
+                it.copy(keyColorMessage = "请输入 #RRGGBB 或 #AARRGGBB")
+            } else {
+                val next = it.copy(
+                    keyColor = color,
+                    keyHexInput = color.toHexString(),
+                    keyColorMessage = "按键颜色已应用",
+                )
+                persistAppearance(next)
+                next
+            }
+        }
+    }
+
+    fun updateKeyColorChannel(channel: ColorChannel, value: Float) {
+        val current = mutableUiState.value.keyColor
+        val nextColor = when (channel) {
+            ColorChannel.Red -> current.copy(red = value)
+            ColorChannel.Green -> current.copy(green = value)
+            ColorChannel.Blue -> current.copy(blue = value)
+        }
+
+        mutableUiState.update {
+            val next = it.copy(
+                keyColor = nextColor,
+                keyHexInput = nextColor.toHexString(),
+                keyColorMessage = "按键颜色已更新",
+            )
+            persistAppearance(next)
+            next
+        }
+    }
+
+    fun setLaunchLandscapeEnabled(enabled: Boolean) {
+        mutableUiState.update {
+            val next = it.copy(launchLandscapeEnabled = enabled)
+            persistAppearance(next)
+            next
+        }
+    }
+
     fun pressKey(usage: HidUsage?, modifiers: Set<HidModifier> = emptySet()) {
         bluetoothController.sendKeyboard(KeyboardReport(usage, modifiers))
         bluetoothController.releaseKeyboard()
@@ -184,13 +258,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val palette = storedPalette
             ?: storedHex?.let(::parseHexColor)?.let(::customPaletteFrom)
             ?: DefaultPastelPalettes.first()
+        val storedKeyColor = preferences.getString(KEY_KEY_COLOR_HEX, null)
+        val keyColor = storedKeyColor?.let(::parseHexColor) ?: palette.keyTop
 
         return PastelBoardUiState(
             palette = palette,
             hexInput = palette.primary.toHexString(),
+            keyColor = keyColor,
+            keyHexInput = keyColor.toHexString(),
             backgroundImageUri = preferences.getString(KEY_BACKGROUND_URI, null),
             backgroundImageOpacity = preferences.getFloat(KEY_BACKGROUND_OPACITY, 0.34f),
             keySoundEnabled = preferences.getBoolean(KEY_KEY_SOUND_ENABLED, true),
+            keySoundUri = preferences.getString(KEY_KEY_SOUND_URI, null),
+            launchLandscapeEnabled = preferences.getBoolean(KEY_LAUNCH_LANDSCAPE_ENABLED, false),
         )
     }
 
@@ -198,13 +278,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val editor = preferences.edit()
             .putString(KEY_PALETTE_ID, state.palette.id)
             .putString(KEY_PRIMARY_HEX, state.palette.primary.toHexString())
+            .putString(KEY_KEY_COLOR_HEX, state.keyColor.toHexString())
             .putFloat(KEY_BACKGROUND_OPACITY, state.backgroundImageOpacity)
             .putBoolean(KEY_KEY_SOUND_ENABLED, state.keySoundEnabled)
+            .putBoolean(KEY_LAUNCH_LANDSCAPE_ENABLED, state.launchLandscapeEnabled)
 
         if (state.backgroundImageUri == null) {
             editor.remove(KEY_BACKGROUND_URI)
         } else {
             editor.putString(KEY_BACKGROUND_URI, state.backgroundImageUri)
+        }
+
+        if (state.keySoundUri == null) {
+            editor.remove(KEY_KEY_SOUND_URI)
+        } else {
+            editor.putString(KEY_KEY_SOUND_URI, state.keySoundUri)
         }
 
         editor.apply()
@@ -214,9 +302,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         const val PREFERENCES_NAME = "pastel_board_preferences"
         const val KEY_PALETTE_ID = "palette_id"
         const val KEY_PRIMARY_HEX = "primary_hex"
+        const val KEY_KEY_COLOR_HEX = "key_color_hex"
         const val KEY_BACKGROUND_URI = "background_uri"
         const val KEY_BACKGROUND_OPACITY = "background_opacity"
         const val KEY_KEY_SOUND_ENABLED = "key_sound_enabled"
+        const val KEY_KEY_SOUND_URI = "key_sound_uri"
+        const val KEY_LAUNCH_LANDSCAPE_ENABLED = "launch_landscape_enabled"
     }
 }
 
@@ -229,15 +320,22 @@ data class PastelBoardUiState(
     val palette: PastelPalette = DefaultPastelPalettes.first(),
     val hexInput: String = DefaultPastelPalettes.first().primary.toHexString(),
     val colorMessage: String? = null,
+    val keyColor: Color = DefaultPastelPalettes.first().keyTop,
+    val keyHexInput: String = DefaultPastelPalettes.first().keyTop.toHexString(),
+    val keyColorMessage: String? = null,
     val backgroundImageUri: String? = null,
     val backgroundImageOpacity: Float = 0.34f,
     val keySoundEnabled: Boolean = true,
+    val keySoundUri: String? = null,
+    val keySoundMessage: String? = null,
+    val launchLandscapeEnabled: Boolean = false,
 )
 
 enum class Screen {
     Home,
     Control,
     Settings,
+    KeyboardTest,
 }
 
 enum class ControlMode(val label: String) {
