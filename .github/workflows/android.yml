@@ -64,14 +64,14 @@ jobs:
           make_latest: false
           files: release/PastelBoard-debug.apk
 
-      - name: Publish v0.2.0 debug APK
+      - name: Publish v0.2.1 debug APK
         if: github.event_name == 'push'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v0.2.0
-          name: PastelBoard v0.2.0
+          tag_name: v0.2.1
+          name: PastelBoard v0.2.1
           body: |
-            v0.2.0：新增侧边展开菜单、键盘测试页、自定义按键音、自定义键帽颜色、开启即横屏，以及更宽松清晰的界面布局。
+            v0.2.1：精简主页设备选择页、优化蓝牙设备显示、修复键盘测试页按键音加载、让键帽呈现磨砂玻璃质感，并将金色烟花放到键帽上方，放大且持续 1.5 秒。
           prerelease: false
           make_latest: true
           files: release/PastelBoard-debug.apk

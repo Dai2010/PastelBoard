@@ -1,6 +1,7 @@
 package dev.pastel.pastelboard.ui.control
 
 import android.content.Context
+import android.content.res.AssetFileDescriptor
 import android.media.AudioAttributes
 import android.media.SoundPool
 import android.net.Uri
@@ -25,12 +26,19 @@ class KeySoundPlayer(
         .build()
 
     private var loaded = false
-    private val soundId = loadSound(soundUri)
+    private var pendingPlay = false
+    private var soundId = 0
+    private var customSoundDescriptor: AssetFileDescriptor? = null
 
     init {
         soundPool.setOnLoadCompleteListener { _, sampleId, status ->
             loaded = sampleId == soundId && status == 0
+            if (loaded && pendingPlay) {
+                pendingPlay = false
+                playLoaded()
+            }
         }
+        soundId = loadSound(soundUri)
     }
 
     private fun loadSound(soundUri: String?): Int {
@@ -39,21 +47,35 @@ class KeySoundPlayer(
         }
 
         return runCatching {
-            context.contentResolver.openAssetFileDescriptor(Uri.parse(soundUri), "r")?.use { descriptor ->
-                soundPool.load(descriptor.fileDescriptor, descriptor.startOffset, descriptor.length, 1)
+            customSoundDescriptor = context.contentResolver.openAssetFileDescriptor(Uri.parse(soundUri), "r")
+            val descriptor = customSoundDescriptor
+            descriptor?.let {
+                soundPool.load(it.fileDescriptor, it.startOffset, it.length, 1)
             } ?: soundPool.load(context, R.raw.key_flick, 1)
         }.getOrElse {
+            customSoundDescriptor?.close()
+            customSoundDescriptor = null
             soundPool.load(context, R.raw.key_flick, 1)
         }
     }
 
     fun play(enabled: Boolean) {
-        if (!enabled || !loaded) return
+        if (!enabled) return
+        if (!loaded) {
+            pendingPlay = true
+            return
+        }
+        playLoaded()
+    }
+
+    private fun playLoaded() {
         soundPool.play(soundId, 0.48f, 0.48f, 1, 0, 1.08f)
     }
 
     fun release() {
         soundPool.release()
+        customSoundDescriptor?.close()
+        customSoundDescriptor = null
     }
 }
 

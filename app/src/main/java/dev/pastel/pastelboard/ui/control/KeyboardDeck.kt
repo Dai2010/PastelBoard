@@ -33,9 +33,11 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import dev.pastel.pastelboard.PastelBoardUiState
 import dev.pastel.pastelboard.bluetooth.HidModifier
 import dev.pastel.pastelboard.bluetooth.HidUsage
@@ -114,7 +116,7 @@ private fun PastelKeyboardKey(
         burstProgress.snapTo(0f)
         burstProgress.animateTo(
             targetValue = 1f,
-            animationSpec = tween(durationMillis = 520, easing = FastOutSlowInEasing),
+            animationSpec = tween(durationMillis = 1500, easing = FastOutSlowInEasing),
         )
     }
 
@@ -126,34 +128,54 @@ private fun PastelKeyboardKey(
 
     Box(
         modifier = modifier
-            .fillMaxHeight()
-            .shadow(4.dp, RoundedCornerShape(cornerRadius.dp))
-            .clip(RoundedCornerShape(cornerRadius.dp))
-            .background(
-                Brush.verticalGradient(
-                    listOf(
-                        Color.White.copy(alpha = 0.86f),
-                        keyColor.copy(alpha = 0.82f),
-                        MaterialTheme.colorScheme.surface.copy(alpha = 0.68f),
-                    ),
-                ),
-            )
-            .border(1.dp, Color.White.copy(alpha = 0.52f), RoundedCornerShape(cornerRadius.dp))
-            .combinedClickable(
-                onClick = { press() },
-                onLongClick = { press() },
-            ),
+            .zIndex(if (burstProgress.value < 1f) 1f else 0f)
+            .fillMaxHeight(),
         contentAlignment = Alignment.Center,
     ) {
-        GoldenKeyFirework(
-            progress = burstProgress.value,
-            modifier = Modifier.fillMaxSize(),
-        )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .shadow(5.dp, RoundedCornerShape(cornerRadius.dp), clip = false)
+                .clip(RoundedCornerShape(cornerRadius.dp))
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            Color.White.copy(alpha = 0.62f),
+                            keyColor.copy(alpha = 0.48f),
+                            MaterialTheme.colorScheme.surface.copy(alpha = 0.34f),
+                        ),
+                    ),
+                )
+                .background(
+                    Brush.linearGradient(
+                        listOf(
+                            Color.White.copy(alpha = 0.46f),
+                            Color.White.copy(alpha = 0.10f),
+                            keyColor.copy(alpha = 0.22f),
+                        ),
+                    ),
+                )
+                .border(1.dp, Color.White.copy(alpha = 0.66f), RoundedCornerShape(cornerRadius.dp))
+                .combinedClickable(
+                    onClick = { press() },
+                    onLongClick = { press() },
+                ),
+        ) {}
         Text(
             text = spec.label,
             style = MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.Bold,
             color = labelColor,
+        )
+        GoldenKeyFirework(
+            progress = burstProgress.value,
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    scaleX = 2f
+                    scaleY = 2f
+                    clip = false
+                },
         )
     }
 }
@@ -171,8 +193,8 @@ private fun GoldenKeyFirework(progress: Float, modifier: Modifier = Modifier) {
             radius = radius * 0.42f,
             center = center,
         )
-        repeat(16) { index ->
-            val angle = (PI * 2.0 * index / 16.0).toFloat()
+        repeat(24) { index ->
+            val angle = (PI * 2.0 * index / 24.0).toFloat()
             val distance = radius * (0.44f + (index % 3) * 0.08f)
             val sparkX = (cos(angle.toDouble()) * distance).toFloat()
             val sparkY = (sin(angle.toDouble()) * distance).toFloat()
