@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: write
+
 jobs:
   build:
     name: Build debug APK
@@ -38,8 +41,25 @@ jobs:
       - name: Build
         run: ./gradlew assembleDebug
 
+      - name: Prepare release APK
+        if: github.event_name == 'push'
+        run: |
+          mkdir -p release
+          cp app/build/outputs/apk/debug/*.apk release/PastelBoard-debug.apk
+
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
           name: PastelBoard-debug-apk
           path: app/build/outputs/apk/debug/*.apk
+
+      - name: Publish latest debug APK
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: debug-latest
+          name: PastelBoard Debug Latest
+          body: 自动构建的最新 Debug APK。
+          prerelease: true
+          make_latest: false
+          files: release/PastelBoard-debug.apk
