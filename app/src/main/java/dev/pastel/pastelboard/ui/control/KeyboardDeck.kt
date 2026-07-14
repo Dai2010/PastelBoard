@@ -52,6 +52,7 @@ fun PastelKeyboardDeck(
     modifier: Modifier = Modifier,
     sendKey: (HidUsage?, Set<HidModifier>) -> Unit = { _, _ -> },
 ) {
+    var activeModifiers by remember { mutableStateOf(emptySet<HidModifier>()) }
     val playKeySound = rememberKeySoundPlayer(
         enabled = state.keySoundEnabled,
         soundUri = state.keySoundUri,
@@ -89,7 +90,9 @@ fun PastelKeyboardDeck(
                             cornerRadius = keyCorner.value.toInt(),
                             modifier = Modifier.weight(spec.weight),
                             playKeySound = playKeySound,
-                            sendKey = sendKey,
+                            activeModifiers = activeModifiers,
+                            onModifiersChanged = { activeModifiers = it },
+                            onSendKey = sendKey,
                         )
                     }
                 }
@@ -106,12 +109,16 @@ private fun PastelKeyboardKey(
     cornerRadius: Int,
     modifier: Modifier = Modifier,
     playKeySound: () -> Unit,
-    sendKey: (HidUsage?, Set<HidModifier>) -> Unit,
+    activeModifiers: Set<HidModifier>,
+    onModifiersChanged: (Set<HidModifier>) -> Unit,
+    onSendKey: (HidUsage?, Set<HidModifier>) -> Unit,
 ) {
     var burstToken by remember { mutableStateOf(0) }
     val burstProgress = remember { Animatable(1f) }
     val labelColor = if (keyColor.luminance() > 0.58f) Color(0xFF2A1730) else Color.White
     val keyShape = RoundedCornerShape(cornerRadius.dp)
+    val modifierSelected = spec.isModifier && spec.modifiers.all { it in activeModifiers }
+    val selectedOverlayAlpha = if (modifierSelected) 0.42f else 0f
 
     LaunchedEffect(burstToken) {
         if (burstToken == 0) return@LaunchedEffect
@@ -125,7 +132,22 @@ private fun PastelKeyboardKey(
     fun press() {
         burstToken += 1
         playKeySound()
-        sendKey(spec.usage, spec.modifiers)
+        if (spec.isModifier) {
+            onModifiersChanged(
+                if (modifierSelected) {
+                    activeModifiers - spec.modifiers
+                } else {
+                    activeModifiers + spec.modifiers
+                },
+            )
+            return
+        }
+
+        val modifiers = activeModifiers + spec.modifiers
+        onSendKey(spec.usage, modifiers)
+        if (activeModifiers.isNotEmpty()) {
+            onModifiersChanged(emptySet())
+        }
     }
 
     Box(
@@ -159,6 +181,7 @@ private fun PastelKeyboardKey(
                         ),
                     ),
                 )
+                .background(keyColor.copy(alpha = selectedOverlayAlpha))
                 .border(1.dp, Color.White.copy(alpha = 0.88f), keyShape)
                 .combinedClickable(onClick = { press() }, onLongClick = { press() }),
         ) {
@@ -276,7 +299,9 @@ private data class KeyboardKeySpec(
     val usage: HidUsage?,
     val weight: Float = 1f,
     val modifiers: Set<HidModifier> = emptySet(),
-)
+) {
+    val isModifier: Boolean = usage == null && modifiers.isNotEmpty()
+}
 
 private val laptopKeyboardRows = listOf(
     listOf(
@@ -315,10 +340,12 @@ private val laptopKeyboardRows = listOf(
         KeyboardKeySpec("↑", HidUsage.ArrowUp), KeyboardKeySpec("Shift", null, 1.7f, setOf(HidModifier.RightShift)),
     ),
     listOf(
-        KeyboardKeySpec("Ctrl", null, 1.2f, setOf(HidModifier.LeftCtrl)),
-        KeyboardKeySpec("Alt", null, 1.2f, setOf(HidModifier.LeftAlt)),
-        KeyboardKeySpec("Space", HidUsage.Space, 5.8f),
-        KeyboardKeySpec("Alt", null, 1.2f, setOf(HidModifier.RightAlt)),
+        KeyboardKeySpec("Ctrl", null, 1.1f, setOf(HidModifier.LeftCtrl)),
+        KeyboardKeySpec("Win", null, 1.1f, setOf(HidModifier.LeftMeta)),
+        KeyboardKeySpec("Alt", null, 1.1f, setOf(HidModifier.LeftAlt)),
+        KeyboardKeySpec("Space", HidUsage.Space, 4.8f),
+        KeyboardKeySpec("Alt", null, 1.1f, setOf(HidModifier.RightAlt)),
+        KeyboardKeySpec("Del", HidUsage.Delete, 1.1f),
         KeyboardKeySpec("←", HidUsage.ArrowLeft), KeyboardKeySpec("↓", HidUsage.ArrowDown), KeyboardKeySpec("→", HidUsage.ArrowRight),
     ),
 )

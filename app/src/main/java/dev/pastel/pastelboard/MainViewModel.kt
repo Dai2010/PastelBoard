@@ -8,6 +8,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import dev.pastel.pastelboard.bluetooth.BluetoothHidController
+import dev.pastel.pastelboard.bluetooth.HidConnectionStatus
 import dev.pastel.pastelboard.bluetooth.HidModifier
 import dev.pastel.pastelboard.bluetooth.HidUsage
 import dev.pastel.pastelboard.bluetooth.KeyboardReport
@@ -16,24 +17,40 @@ import dev.pastel.pastelboard.model.DefaultPastelPalettes
 import dev.pastel.pastelboard.model.DeviceTarget
 import dev.pastel.pastelboard.model.PastelPalette
 import dev.pastel.pastelboard.model.customPaletteFrom
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val bluetoothController = BluetoothHidController(application)
     private val preferences = application.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
     private val mutableUiState = kotlinx.coroutines.flow.MutableStateFlow(loadInitialState())
+    private val keyPressMutex = Mutex()
 
     val uiState: StateFlow<PastelBoardUiState> = mutableUiState
-        .map { state -> state.copy(devices = bluetoothController.devices.value) }
+        .combine(bluetoothController.devices) { state, devices ->
+            state.copy(devices = devices)
+        }
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5_000),
             initialValue = PastelBoardUiState(),
         )
+
+    init {
+        viewModelScope.launch {
+            bluetoothController.connectionState.collect { connection ->
+                applyConnectionState(connection.status, connection.target)
+            }
+        }
+    }
 
     val permissions: Array<String>
         get() = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -51,17 +68,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun connect(device: DeviceTarget) {
-        val connected = bluetoothController.connect(device)
+        val connecting = bluetoothController.connect(device)
         mutableUiState.update {
             it.copy(
-                selectedDevice = if (connected) device else null,
-                connectionStatus = if (connected) "已连接到 ${device.name}" else "连接需要蓝牙权限或设备配对",
-                screen = if (connected) Screen.Control else Screen.Home,
+                selectedDevice = if (connecting) device else null,
+                connectionStatus = if (connecting) "正在连接 ${device.name}…" else "连接需要蓝牙权限或设备配对",
+                screen = Screen.Home,
             )
         }
     }
 
     fun disconnect() {
+        bluetoothController.disconnect()
         mutableUiState.update {
             it.copy(
                 selectedDevice = null,
@@ -238,8 +256,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun pressKey(usage: HidUsage?, modifiers: Set<HidModifier> = emptySet()) {
-        bluetoothController.sendKeyboard(KeyboardReport(usage, modifiers))
-        bluetoothController.releaseKeyboard()
+        viewModelScope.launch {
+            keyPressMutex.withLock {
+                bluetoothController.sendKeyboard(KeyboardReport(usage, modifiers))
+                delay(KEY_PRESS_DURATION_MS)
+                bluetoothController.releaseKeyboard()
+            }
+        }
     }
 
     fun movePointer(deltaX: Int, deltaY: Int) {
@@ -249,6 +272,31 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun clickPointer(button: Int = 1) {
         bluetoothController.sendPointer(PointerReport(deltaX = 0, deltaY = 0, buttons = button))
         bluetoothController.sendPointer(PointerReport(deltaX = 0, deltaY = 0))
+    }
+
+    private fun applyConnectionState(status: HidConnectionStatus, target: DeviceTarget?) {
+        mutableUiState.update { state ->
+            when (status) {
+                HidConnectionStatus.Connecting -> state.copy(
+                    selectedDevice = target,
+                    connectionStatus = target?.let { "正在连接 ${it.name}…" } ?: "正在准备蓝牙 HID…",
+                )
+
+                HidConnectionStatus.Connected -> state.copy(
+                    selectedDevice = target,
+                    connectionStatus = target?.let { "已连接到 ${it.name}" } ?: "蓝牙 HID 已连接",
+                    screen = Screen.Control,
+                )
+
+                HidConnectionStatus.Failed -> state.copy(
+                    selectedDevice = null,
+                    connectionStatus = target?.let { "无法连接 ${it.name}，请确认目标设备允许 HID 输入" } ?: "蓝牙 HID 注册或连接失败",
+                    screen = Screen.Home,
+                )
+
+                HidConnectionStatus.Disconnected -> state.copy(selectedDevice = null)
+            }
+        }
     }
 
     private fun loadInitialState(): PastelBoardUiState {
@@ -299,6 +347,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private companion object {
+        const val KEY_PRESS_DURATION_MS = 50L
         const val PREFERENCES_NAME = "pastel_board_preferences"
         const val KEY_PALETTE_ID = "palette_id"
         const val KEY_PRIMARY_HEX = "primary_hex"
