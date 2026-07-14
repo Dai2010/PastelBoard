@@ -1,0 +1,125 @@
+package dev.pastel.pastelboard.bluetooth
+
+enum class HidUsage(val code: Int) {
+    A(0x04),
+    B(0x05),
+    C(0x06),
+    D(0x07),
+    E(0x08),
+    F(0x09),
+    G(0x0A),
+    H(0x0B),
+    I(0x0C),
+    J(0x0D),
+    K(0x0E),
+    L(0x0F),
+    M(0x10),
+    N(0x11),
+    O(0x12),
+    P(0x13),
+    Q(0x14),
+    R(0x15),
+    S(0x16),
+    T(0x17),
+    U(0x18),
+    V(0x19),
+    W(0x1A),
+    X(0x1B),
+    Y(0x1C),
+    Z(0x1D),
+    Num1(0x1E),
+    Num2(0x1F),
+    Num3(0x20),
+    Num4(0x21),
+    Num5(0x22),
+    Num6(0x23),
+    Num7(0x24),
+    Num8(0x25),
+    Num9(0x26),
+    Num0(0x27),
+    Enter(0x28),
+    Escape(0x29),
+    Backspace(0x2A),
+    Tab(0x2B),
+    Space(0x2C),
+    Minus(0x2D),
+    Equal(0x2E),
+    LeftBracket(0x2F),
+    RightBracket(0x30),
+    Backslash(0x31),
+    Semicolon(0x33),
+    Apostrophe(0x34),
+    Grave(0x35),
+    Comma(0x36),
+    Dot(0x37),
+    Slash(0x38),
+    CapsLock(0x39),
+    F1(0x3A),
+    F2(0x3B),
+    F3(0x3C),
+    F4(0x3D),
+    F5(0x3E),
+    F6(0x3F),
+    F7(0x40),
+    F8(0x41),
+    F9(0x42),
+    F10(0x43),
+    F11(0x44),
+    F12(0x45),
+    Insert(0x49),
+    Home(0x4A),
+    PageUp(0x4B),
+    Delete(0x4C),
+    End(0x4D),
+    PageDown(0x4E),
+    ArrowRight(0x4F),
+    ArrowLeft(0x50),
+    ArrowDown(0x51),
+    ArrowUp(0x52),
+}
+
+enum class HidModifier(val mask: Int) {
+    LeftCtrl(0x01),
+    LeftShift(0x02),
+    LeftAlt(0x04),
+    LeftMeta(0x08),
+    RightCtrl(0x10),
+    RightShift(0x20),
+    RightAlt(0x40),
+    RightMeta(0x80),
+}
+
+data class KeyboardReport(
+    val usage: HidUsage? = null,
+    val modifiers: Set<HidModifier> = emptySet(),
+) {
+    val bytes: ByteArray
+        get() {
+            val modifierByte = modifiers.fold(0) { acc, modifier -> acc or modifier.mask }
+            return byteArrayOf(
+                modifierByte.toByte(),
+                0x00,
+                (usage?.code ?: 0x00).toByte(),
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+            )
+        }
+}
+
+data class PointerReport(
+    val deltaX: Int,
+    val deltaY: Int,
+    val wheel: Int = 0,
+    val buttons: Int = 0,
+) {
+    val bytes: ByteArray
+        get() = byteArrayOf(
+            buttons.coerceIn(0, 7).toByte(),
+            deltaX.coerceIn(-127, 127).toByte(),
+            deltaY.coerceIn(-127, 127).toByte(),
+            wheel.coerceIn(-127, 127).toByte(),
+        )
+}
