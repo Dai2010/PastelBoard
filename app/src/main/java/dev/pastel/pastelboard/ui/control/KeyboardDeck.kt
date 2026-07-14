@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.matchParentSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -28,6 +29,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
@@ -110,6 +112,7 @@ private fun PastelKeyboardKey(
     var burstToken by remember { mutableStateOf(0) }
     val burstProgress = remember { Animatable(1f) }
     val labelColor = if (keyColor.luminance() > 0.58f) Color(0xFF2A1730) else Color.White
+    val keyShape = RoundedCornerShape(cornerRadius.dp)
 
     LaunchedEffect(burstToken) {
         if (burstToken == 0) return@LaunchedEffect
@@ -135,32 +138,47 @@ private fun PastelKeyboardKey(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .shadow(5.dp, RoundedCornerShape(cornerRadius.dp), clip = false)
-                .clip(RoundedCornerShape(cornerRadius.dp))
+                .shadow(9.dp, keyShape, clip = false, ambientColor = keyColor.copy(alpha = 0.26f), spotColor = Color(0xFF1C1026).copy(alpha = 0.22f))
+                .clip(keyShape)
+                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.18f))
                 .background(
                     Brush.verticalGradient(
                         listOf(
-                            Color.White.copy(alpha = 0.62f),
-                            keyColor.copy(alpha = 0.48f),
-                            MaterialTheme.colorScheme.surface.copy(alpha = 0.34f),
+                            Color.White.copy(alpha = 0.86f),
+                            Color.White.copy(alpha = 0.42f),
+                            keyColor.copy(alpha = 0.34f),
+                            MaterialTheme.colorScheme.surface.copy(alpha = 0.24f),
                         ),
                     ),
                 )
                 .background(
                     Brush.linearGradient(
                         listOf(
-                            Color.White.copy(alpha = 0.46f),
-                            Color.White.copy(alpha = 0.10f),
-                            keyColor.copy(alpha = 0.22f),
+                            Color.White.copy(alpha = 0.64f),
+                            Color.White.copy(alpha = 0.16f),
+                            keyColor.copy(alpha = 0.18f),
                         ),
                     ),
                 )
-                .border(1.dp, Color.White.copy(alpha = 0.66f), RoundedCornerShape(cornerRadius.dp))
-                .combinedClickable(
-                    onClick = { press() },
-                    onLongClick = { press() },
-                ),
-        ) {}
+                .border(1.dp, Color.White.copy(alpha = 0.88f), keyShape)
+                .combinedClickable(onClick = { press() }, onLongClick = { press() }),
+        ) {
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .blur(10.dp)
+                    .background(
+                        Brush.radialGradient(
+                            colors = listOf(
+                                Color.White.copy(alpha = 0.44f),
+                                keyColor.copy(alpha = 0.18f),
+                                Color.Transparent,
+                            ),
+                        ),
+                    ),
+            )
+            GlassKeyTexture(modifier = Modifier.matchParentSize())
+        }
         Text(
             text = spec.label,
             style = MaterialTheme.typography.titleSmall,
@@ -176,6 +194,46 @@ private fun PastelKeyboardKey(
                     scaleY = 2f
                     clip = false
                 },
+        )
+    }
+}
+
+@Composable
+private fun GlassKeyTexture(modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier) {
+        val width = size.width
+        val height = size.height
+        drawCircle(
+            color = Color.White.copy(alpha = 0.34f),
+            radius = width * 0.46f,
+            center = Offset(width * 0.18f, height * 0.08f),
+        )
+        drawLine(
+            color = Color.White.copy(alpha = 0.46f),
+            start = Offset(width * 0.10f, height * 0.20f),
+            end = Offset(width * 0.88f, height * 0.04f),
+            strokeWidth = 2.2f,
+        )
+        drawLine(
+            color = Color.White.copy(alpha = 0.22f),
+            start = Offset(width * 0.08f, height * 0.36f),
+            end = Offset(width * 0.78f, height * 0.18f),
+            strokeWidth = 1.2f,
+        )
+        repeat(18) { index ->
+            val x = width * (((index * 37) % 100) / 100f)
+            val y = height * (((index * 53) % 100) / 100f)
+            drawCircle(
+                color = Color.White.copy(alpha = if (index % 3 == 0) 0.22f else 0.14f),
+                radius = 0.7f + (index % 3) * 0.35f,
+                center = Offset(x, y),
+            )
+        }
+        drawLine(
+            color = Color(0xFF3A2446).copy(alpha = 0.16f),
+            start = Offset(width * 0.12f, height * 0.95f),
+            end = Offset(width * 0.90f, height * 0.86f),
+            strokeWidth = 1.6f,
         )
     }
 }

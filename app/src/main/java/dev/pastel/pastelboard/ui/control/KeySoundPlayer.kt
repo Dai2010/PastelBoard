@@ -3,40 +3,41 @@ package dev.pastel.pastelboard.ui.control
 import android.content.Context
 import android.content.res.AssetFileDescriptor
 import android.media.AudioAttributes
+import android.media.AudioManager
+import android.media.MediaPlayer
 import android.media.SoundPool
 import android.net.Uri
+import android.view.SoundEffectConstants
+import android.view.View
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import dev.pastel.pastelboard.R
 
 class KeySoundPlayer(
     private val context: Context,
+    private val view: View,
     soundUri: String? = null,
 ) {
+    private val audioManager = context.getSystemService(AudioManager::class.java)
+    private val audioAttributes = AudioAttributes.Builder()
+        .setUsage(AudioAttributes.USAGE_MEDIA)
+        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+        .build()
     private val soundPool = SoundPool.Builder()
         .setMaxStreams(8)
-        .setAudioAttributes(
-            AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
-                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                .build(),
-        )
+        .setAudioAttributes(audioAttributes)
         .build()
 
     private var loaded = false
-    private var pendingPlay = false
     private var soundId = 0
     private var customSoundDescriptor: AssetFileDescriptor? = null
 
     init {
         soundPool.setOnLoadCompleteListener { _, sampleId, status ->
             loaded = sampleId == soundId && status == 0
-            if (loaded && pendingPlay) {
-                pendingPlay = false
-                playLoaded()
-            }
         }
         soundId = loadSound(soundUri)
     }
@@ -61,15 +62,26 @@ class KeySoundPlayer(
 
     fun play(enabled: Boolean) {
         if (!enabled) return
-        if (!loaded) {
-            pendingPlay = true
-            return
-        }
-        playLoaded()
+
+        if (loaded && soundPool.play(soundId, 0.78f, 0.78f, 1, 0, 1.08f) != 0) return
+        if (playMediaFallback()) return
+
+        audioManager?.playSoundEffect(SoundEffectConstants.CLICK, 0.8f)
+        view.playSoundEffect(SoundEffectConstants.CLICK)
     }
 
-    private fun playLoaded() {
-        soundPool.play(soundId, 0.48f, 0.48f, 1, 0, 1.08f)
+    private fun playMediaFallback(): Boolean {
+        return runCatching {
+            val player = MediaPlayer.create(context, R.raw.key_flick) ?: return false
+            player.setOnCompletionListener { finishedPlayer -> finishedPlayer.release() }
+            player.setOnErrorListener { errorPlayer, _, _ ->
+                errorPlayer.release()
+                true
+            }
+            player.setVolume(0.9f, 0.9f)
+            player.start()
+            true
+        }.getOrDefault(false)
     }
 
     fun release() {
@@ -82,7 +94,8 @@ class KeySoundPlayer(
 @Composable
 fun rememberKeySoundPlayer(enabled: Boolean, soundUri: String? = null): () -> Unit {
     val context = LocalContext.current.applicationContext
-    val player = remember(soundUri) { KeySoundPlayer(context, soundUri) }
+    val view = LocalView.current
+    val player = remember(soundUri, view) { KeySoundPlayer(context, view, soundUri) }
 
     DisposableEffect(player) {
         onDispose { player.release() }

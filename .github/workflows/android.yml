@@ -64,14 +64,14 @@ jobs:
           make_latest: false
           files: release/PastelBoard-debug.apk
 
-      - name: Publish v0.2.1 debug APK
+      - name: Publish v0.2.2 debug APK
         if: github.event_name == 'push'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v0.2.1
-          name: PastelBoard v0.2.1
+          tag_name: v0.2.2
+          name: PastelBoard v0.2.2
           body: |
-            v0.2.1：精简主页设备选择页、优化蓝牙设备显示、修复键盘测试页按键音加载、让键帽呈现磨砂玻璃质感，并将金色烟花放到键帽上方，放大且持续 1.5 秒。
+            v0.2.2：强化键帽磨砂玻璃视觉，增加高光、雾面颗粒和玻璃阴影；按键音改用媒体音量播放，并加入 MediaPlayer 与系统点击音兜底，避免测试页无声。
           prerelease: false
           make_latest: true
           files: release/PastelBoard-debug.apk
