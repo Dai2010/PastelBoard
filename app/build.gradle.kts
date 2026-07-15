@@ -12,8 +12,8 @@ android {
         applicationId = "dev.pastel.pastelboard"
         minSdk = 31
         targetSdk = 35
-        versionCode = 4
-        versionName = "0.2.2"
+        versionCode = 5
+        versionName = "0.2.3-internal.1"
 
         vectorDrawables {
             useSupportLibrary = true

@@ -22,7 +22,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
-class BluetoothHidController(context: Context) {
+class BluetoothHidController(
+    context: Context,
+    private val logger: (String) -> Unit = {},
+) {
     private val appContext = context.applicationContext
     private val bluetoothManager = appContext.getSystemService(BluetoothManager::class.java)
     private val adapter: BluetoothAdapter? = bluetoothManager?.adapter
@@ -43,14 +46,17 @@ class BluetoothHidController(context: Context) {
         @SuppressLint("MissingPermission")
         override fun onServiceConnected(profile: Int, proxy: BluetoothProfile) {
             if (profile != BluetoothProfile.HID_DEVICE) return
+            logger("HID profile connected")
             hidDevice = proxy as BluetoothHidDevice
             if (!registerHidApp()) {
+                logger("HID app registration did not start")
                 failPendingConnection()
             }
         }
 
         override fun onServiceDisconnected(profile: Int) {
             if (profile == BluetoothProfile.HID_DEVICE) {
+                logger("HID profile disconnected")
                 hidDevice = null
                 appRegistered = false
                 appRegistrationPending.set(false)
@@ -65,6 +71,7 @@ class BluetoothHidController(context: Context) {
     private val hidCallback = object : BluetoothHidDevice.Callback() {
         @SuppressLint("MissingPermission")
         override fun onConnectionStateChanged(device: BluetoothDevice?, state: Int) {
+            logger("connection state=${state.toConnectionStateName()} device=${device?.safeName().orEmpty()}")
             when (state) {
                 BluetoothProfile.STATE_CONNECTED -> {
                     connectedDevice = device
@@ -99,6 +106,7 @@ class BluetoothHidController(context: Context) {
 
         @SuppressLint("MissingPermission")
         override fun onAppStatusChanged(pluggedDevice: BluetoothDevice?, registered: Boolean) {
+            logger("app status registered=$registered plugged=${pluggedDevice?.safeName().orEmpty()}")
             appRegistered = registered
             appRegistrationPending.set(false)
             if (registered) {
@@ -131,25 +139,34 @@ class BluetoothHidController(context: Context) {
     @SuppressLint("MissingPermission")
     fun refreshPairedDevices() {
         if (!hasBluetoothConnectPermission()) {
+            logger("refresh devices blocked: missing BLUETOOTH_CONNECT")
             _devices.value = emptyList()
             return
         }
 
-        ensureHidProfile()
+        logger("refresh paired devices")
+        val profileRequested = ensureHidProfile()
+        logger("HID profile requested=$profileRequested")
 
         _devices.value = adapter
             ?.bondedDevices
             ?.map { device -> device.toTarget() }
             ?.sortedWith(compareBy<DeviceTarget> { !it.isPaired }.thenBy { it.name })
             .orEmpty()
+        logger("paired devices=${_devices.value.size}")
     }
 
     @SuppressLint("MissingPermission")
     fun connect(target: DeviceTarget): Boolean {
-        if (!hasBluetoothConnectPermission() || target.address.isBlank()) return false
+        if (!hasBluetoothConnectPermission() || target.address.isBlank()) {
+            logger("connect blocked: permission=${hasBluetoothConnectPermission()} addressBlank=${target.address.isBlank()}")
+            return false
+        }
+        logger("connect requested target=${target.name} ${target.address}")
         val profileRequested = ensureHidProfile()
         val device = adapter?.bondedDevices?.firstOrNull { it.address == target.address } ?: return false
         if (connectedDevice?.address == device.address) {
+            logger("already connected to ${target.name}")
             _connectionState.value = HidConnectionState(
                 status = HidConnectionStatus.Connected,
                 target = target,
@@ -165,17 +182,21 @@ class BluetoothHidController(context: Context) {
         )
         if (hidDevice == null) {
             if (profileRequested) return true
+            logger("connect failed: HID profile unavailable")
             failPendingConnection()
             return false
         }
         if (!appRegistered) {
             if (registerHidApp()) return true
+            logger("connect failed: register app failed")
             failPendingConnection()
             return false
         }
         return if (hidDevice?.connect(device) == true) {
+            logger("connect call accepted")
             true
         } else {
+            logger("connect call rejected")
             failPendingConnection(target)
             false
         }
@@ -183,6 +204,7 @@ class BluetoothHidController(context: Context) {
 
     @SuppressLint("MissingPermission")
     fun disconnect() {
+        logger("disconnect requested")
         pendingDevice = null
         pendingTarget = null
         connectedDevice?.let { device -> hidDevice?.disconnect(device) }
@@ -206,7 +228,9 @@ class BluetoothHidController(context: Context) {
     private fun ensureHidProfile(): Boolean {
         if (hidDevice != null) return true
         if (!hasBluetoothConnectPermission()) return false
-        return adapter?.getProfileProxy(appContext, profileListener, BluetoothProfile.HID_DEVICE) == true
+        return (adapter?.getProfileProxy(appContext, profileListener, BluetoothProfile.HID_DEVICE) == true).also {
+            logger("getProfileProxy result=$it")
+        }
     }
 
     @SuppressLint("MissingPermission")
@@ -232,6 +256,7 @@ class BluetoothHidController(context: Context) {
         )
 
         val registrationStarted = hidDevice?.registerApp(sdp, null, qos, executor, hidCallback) == true
+        logger("registerApp result=$registrationStarted")
         if (!registrationStarted) {
             appRegistrationPending.set(false)
         }
@@ -250,9 +275,17 @@ class BluetoothHidController(context: Context) {
 
     @SuppressLint("MissingPermission")
     private fun sendReport(reportId: Int, data: ByteArray) {
-        val device = connectedDevice ?: return
-        if (!hasBluetoothConnectPermission()) return
-        hidDevice?.sendReport(device, reportId, data)
+        val device = connectedDevice
+        if (device == null) {
+            logger("sendReport dropped: no connected device reportId=$reportId")
+            return
+        }
+        if (!hasBluetoothConnectPermission()) {
+            logger("sendReport blocked: missing permission reportId=$reportId")
+            return
+        }
+        val sent = hidDevice?.sendReport(device, reportId, data) == true
+        logger("sendReport id=$reportId size=${data.size} sent=$sent data=${data.toHexString()}")
     }
 
     @SuppressLint("MissingPermission")
@@ -271,6 +304,25 @@ class BluetoothHidController(context: Context) {
             BluetoothClass.Device.Major.PHONE -> DeviceType.Tablet
             else -> DeviceType.Unknown
         }
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun BluetoothDevice.safeName(): String {
+        return if (hasBluetoothConnectPermission()) name ?: address.orEmpty() else address.orEmpty()
+    }
+
+    private fun Int.toConnectionStateName(): String {
+        return when (this) {
+            BluetoothProfile.STATE_CONNECTED -> "CONNECTED"
+            BluetoothProfile.STATE_CONNECTING -> "CONNECTING"
+            BluetoothProfile.STATE_DISCONNECTED -> "DISCONNECTED"
+            BluetoothProfile.STATE_DISCONNECTING -> "DISCONNECTING"
+            else -> toString()
+        }
+    }
+
+    private fun ByteArray.toHexString(): String {
+        return joinToString(" ") { byte -> "%02X".format(byte.toInt() and 0xFF) }
     }
 
     private companion object {

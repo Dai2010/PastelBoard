@@ -45,7 +45,7 @@ jobs:
         if: github.event_name == 'push'
         run: |
           mkdir -p release
-          cp app/build/outputs/apk/debug/*.apk release/PastelBoard-debug.apk
+          cp app/build/outputs/apk/debug/*.apk release/PastelBoard-internal-test.apk
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
@@ -53,25 +53,22 @@ jobs:
           name: PastelBoard-debug-apk
           path: app/build/outputs/apk/debug/*.apk
 
-      - name: Publish latest debug APK
+      - name: Publish internal test APK
         if: github.event_name == 'push'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: debug-latest
-          name: PastelBoard Debug Latest
-          body: 自动构建的最新 Debug APK。
+          tag_name: internal-test-latest
+          name: PastelBoard 内部测试版 0.2.3-internal.1
+          body: |
+            ⚠️ 内部测试版，请勿作为正式版分发。
+
+            版本：0.2.3-internal.1（versionCode 5）
+
+            本版本用于排查「蓝牙连接成功但目标电脑无输入响应」问题：
+            - 新增「内部测试日志」页面，实时记录蓝牙 HID 连接、按键、触控板与报告发送结果。
+            - 支持在日志页点击「选择位置导出」，通过系统文件选择器把日志保存到任意位置。
+            - 发行产物名称明确标注为内部测试版 APK。
           prerelease: true
           make_latest: false
-          files: release/PastelBoard-debug.apk
-
-      - name: Publish v0.2.2 debug APK
-        if: github.event_name == 'push'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v0.2.2
-          name: PastelBoard v0.2.2
-          body: |
-            v0.2.2：强化键帽磨砂玻璃视觉，增加高光、雾面颗粒和玻璃阴影；按键音改用媒体音量播放，并加入 MediaPlayer 与系统点击音兜底，避免测试页无声。
-          prerelease: false
-          make_latest: true
-          files: release/PastelBoard-debug.apk
+          overwrite_files: true
+          files: release/PastelBoard-internal-test.apk

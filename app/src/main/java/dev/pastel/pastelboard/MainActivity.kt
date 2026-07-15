@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.BugReport
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Keyboard
 import androidx.compose.material.icons.rounded.ScreenRotation
@@ -39,10 +40,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import dev.pastel.pastelboard.ui.control.ControlScreen
 import dev.pastel.pastelboard.ui.home.HomeScreen
+import dev.pastel.pastelboard.ui.logs.InternalLogScreen
 import dev.pastel.pastelboard.ui.settings.SettingsScreen
 import dev.pastel.pastelboard.ui.test.KeyboardTestScreen
 import dev.pastel.pastelboard.ui.theme.PastelBoardTheme
 import kotlinx.coroutines.launch
+import java.io.OutputStreamWriter
 
 class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels()
@@ -92,6 +95,25 @@ private fun PastelBoardApp(viewModel: MainViewModel) {
             viewModel.setKeySoundUri(uri.toString())
         },
     )
+    val logExportPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/plain"),
+        onResult = { uri ->
+            if (uri == null) {
+                viewModel.setLogExportMessage("已取消日志导出")
+                return@rememberLauncherForActivityResult
+            }
+            val result = runCatching {
+                context.contentResolver.openOutputStream(uri)?.use { stream ->
+                    OutputStreamWriter(stream).use { writer ->
+                        writer.write(viewModel.createDiagnosticLogText())
+                    }
+                } ?: error("无法打开导出文件")
+            }
+            viewModel.setLogExportMessage(
+                if (result.isSuccess) "日志已导出到选择的位置" else "日志导出失败：${result.exceptionOrNull()?.message.orEmpty()}",
+            )
+        },
+    )
 
     fun openDrawer() {
         coroutineScope.launch { drawerState.open() }
@@ -134,6 +156,7 @@ private fun PastelBoardApp(viewModel: MainViewModel) {
                     onHome = { navigate(viewModel::openHome) },
                     onControl = { navigate(viewModel::openControl) },
                     onKeyboardTest = { navigate(viewModel::openKeyboardTest) },
+                    onLogs = { navigate(viewModel::openLogs) },
                     onSettings = { navigate(viewModel::openSettings) },
                     onLaunchLandscapeChanged = viewModel::setLaunchLandscapeEnabled,
                 )
@@ -188,6 +211,14 @@ private fun PastelBoardApp(viewModel: MainViewModel) {
                     onApplyKeyHex = viewModel::applyKeyHexColor,
                     onKeyColorChannelChanged = viewModel::updateKeyColorChannel,
                 )
+
+                Screen.Logs -> InternalLogScreen(
+                    state = state,
+                    onBack = viewModel::backHome,
+                    onOpenMenu = ::openDrawer,
+                    onExportLogs = { logExportPicker.launch(viewModel.createLogExportFileName()) },
+                    onClearLogs = viewModel::clearDiagnosticLogs,
+                )
             }
         }
     }
@@ -199,6 +230,7 @@ private fun PastelDrawerContent(
     onHome: () -> Unit,
     onControl: () -> Unit,
     onKeyboardTest: () -> Unit,
+    onLogs: () -> Unit,
     onSettings: () -> Unit,
     onLaunchLandscapeChanged: (Boolean) -> Unit,
 ) {
@@ -210,7 +242,7 @@ private fun PastelDrawerContent(
                 fontWeight = FontWeight.Bold,
             )
             Text(
-                text = "侧边菜单 · v0.2.0",
+                text = "内部测试版 · ${BuildConfig.VERSION_NAME}",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
@@ -233,6 +265,13 @@ private fun PastelDrawerContent(
             selected = state.screen == Screen.KeyboardTest,
             icon = { Icon(Icons.Rounded.Keyboard, contentDescription = null) },
             onClick = onKeyboardTest,
+            modifier = Modifier.padding(horizontal = 12.dp),
+        )
+        NavigationDrawerItem(
+            label = { Text("内部测试日志") },
+            selected = state.screen == Screen.Logs,
+            icon = { Icon(Icons.Rounded.BugReport, contentDescription = null) },
+            onClick = onLogs,
             modifier = Modifier.padding(horizontal = 12.dp),
         )
         NavigationDrawerItem(

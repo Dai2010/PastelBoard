@@ -27,12 +27,18 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
-    private val bluetoothController = BluetoothHidController(application)
     private val preferences = application.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
     private val mutableUiState = kotlinx.coroutines.flow.MutableStateFlow(loadInitialState())
+    private val bluetoothController = BluetoothHidController(application) { message ->
+        appendLog(category = "HID", message = message)
+    }
     private val keyPressMutex = Mutex()
+    private var pointerMoveLogCounter = 0
 
     val uiState: StateFlow<PastelBoardUiState> = mutableUiState
         .combine(bluetoothController.devices) { state, devices ->
@@ -45,6 +51,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         )
 
     init {
+        appendLog("APP", "启动 ${BuildConfig.VERSION_NAME} 内部测试版")
         viewModelScope.launch {
             bluetoothController.connectionState.collect { connection ->
                 applyConnectionState(connection.status, connection.target)
@@ -63,11 +70,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
 
     fun refreshDevices() {
+        appendLog("BT", "刷新已配对设备")
         bluetoothController.refreshPairedDevices()
         mutableUiState.update { it.copy(devices = bluetoothController.devices.value) }
+        appendLog("BT", "设备数量 ${bluetoothController.devices.value.size}")
     }
 
     fun connect(device: DeviceTarget) {
+        appendLog("BT", "请求连接 ${device.name} ${device.address}")
         val connecting = bluetoothController.connect(device)
         mutableUiState.update {
             it.copy(
@@ -79,6 +89,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun disconnect() {
+        appendLog("BT", "请求断开连接")
         bluetoothController.disconnect()
         mutableUiState.update {
             it.copy(
@@ -91,6 +102,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun openSettings() {
         mutableUiState.update { it.copy(screen = Screen.Settings) }
+    }
+
+    fun openLogs() {
+        mutableUiState.update { it.copy(screen = Screen.Logs) }
     }
 
     fun openKeyboardTest() {
@@ -256,6 +271,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun pressKey(usage: HidUsage?, modifiers: Set<HidModifier> = emptySet()) {
+        appendLog("KEY", "按键 usage=${usage?.name ?: "None"} modifiers=${modifiers.joinToString { it.name }.ifBlank { "None" }}")
         viewModelScope.launch {
             keyPressMutex.withLock {
                 bluetoothController.sendKeyboard(KeyboardReport(usage, modifiers))
@@ -266,15 +282,52 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun movePointer(deltaX: Int, deltaY: Int) {
+        pointerMoveLogCounter += 1
+        if (pointerMoveLogCounter % POINTER_LOG_INTERVAL == 0) {
+            appendLog("PTR", "移动 dx=$deltaX dy=$deltaY")
+        }
         bluetoothController.sendPointer(PointerReport(deltaX = deltaX, deltaY = deltaY))
     }
 
     fun clickPointer(button: Int = 1) {
+        appendLog("PTR", "点击按钮 $button")
         bluetoothController.sendPointer(PointerReport(deltaX = 0, deltaY = 0, buttons = button))
         bluetoothController.sendPointer(PointerReport(deltaX = 0, deltaY = 0))
     }
 
+    fun clearDiagnosticLogs() {
+        mutableUiState.update { it.copy(diagnosticLogs = emptyList(), logExportMessage = null) }
+        appendLog("LOG", "日志已清空")
+    }
+
+    fun setLogExportMessage(message: String?) {
+        mutableUiState.update { it.copy(logExportMessage = message) }
+        message?.let { appendLog("LOG", it) }
+    }
+
+    fun createLogExportFileName(): String {
+        val timestamp = FILE_TIMESTAMP_FORMAT.format(Date())
+        return "PastelBoard-internal-${BuildConfig.VERSION_NAME}-$timestamp.txt"
+    }
+
+    fun createDiagnosticLogText(): String {
+        val state = mutableUiState.value
+        return buildString {
+            appendLine("PastelBoard 内部测试版日志")
+            appendLine("版本: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
+            appendLine("导出时间: ${LOG_TIMESTAMP_FORMAT.format(Date())}")
+            appendLine("连接状态: ${state.connectionStatus}")
+            appendLine("当前设备: ${state.selectedDevice?.name ?: "无"}")
+            appendLine("日志条数: ${state.diagnosticLogs.size}")
+            appendLine("---")
+            state.diagnosticLogs.forEach { entry ->
+                appendLine("${entry.timestamp} [${entry.category}] ${entry.message}")
+            }
+        }
+    }
+
     private fun applyConnectionState(status: HidConnectionStatus, target: DeviceTarget?) {
+        appendLog("BT", "连接状态 $status ${target?.name.orEmpty()}")
         mutableUiState.update { state ->
             when (status) {
                 HidConnectionStatus.Connecting -> state.copy(
@@ -296,6 +349,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
                 HidConnectionStatus.Disconnected -> state.copy(selectedDevice = null)
             }
+        }
+    }
+
+    private fun appendLog(category: String, message: String) {
+        val entry = DiagnosticLogEntry(
+            timestamp = LOG_TIMESTAMP_FORMAT.format(Date()),
+            category = category,
+            message = message,
+        )
+        mutableUiState.update { state ->
+            state.copy(
+                diagnosticLogs = (state.diagnosticLogs + entry).takeLast(MAX_LOG_ENTRIES),
+            )
         }
     }
 
@@ -348,6 +414,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private companion object {
         const val KEY_PRESS_DURATION_MS = 50L
+        const val MAX_LOG_ENTRIES = 500
+        const val POINTER_LOG_INTERVAL = 8
         const val PREFERENCES_NAME = "pastel_board_preferences"
         const val KEY_PALETTE_ID = "palette_id"
         const val KEY_PRIMARY_HEX = "primary_hex"
@@ -357,8 +425,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         const val KEY_KEY_SOUND_ENABLED = "key_sound_enabled"
         const val KEY_KEY_SOUND_URI = "key_sound_uri"
         const val KEY_LAUNCH_LANDSCAPE_ENABLED = "launch_landscape_enabled"
+        val LOG_TIMESTAMP_FORMAT = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US)
+        val FILE_TIMESTAMP_FORMAT = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US)
     }
 }
+
+data class DiagnosticLogEntry(
+    val timestamp: String,
+    val category: String,
+    val message: String,
+)
 
 data class PastelBoardUiState(
     val screen: Screen = Screen.Home,
@@ -378,6 +454,8 @@ data class PastelBoardUiState(
     val keySoundUri: String? = null,
     val keySoundMessage: String? = null,
     val launchLandscapeEnabled: Boolean = false,
+    val diagnosticLogs: List<DiagnosticLogEntry> = emptyList(),
+    val logExportMessage: String? = null,
 )
 
 enum class Screen {
@@ -385,6 +463,7 @@ enum class Screen {
     Control,
     Settings,
     KeyboardTest,
+    Logs,
 }
 
 enum class ControlMode(val label: String) {
