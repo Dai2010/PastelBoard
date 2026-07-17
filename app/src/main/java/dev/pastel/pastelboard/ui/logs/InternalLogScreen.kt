@@ -105,6 +105,25 @@ fun InternalLogScreen(
                     .fillMaxWidth()
                     .weight(1f),
             ) {
+                Text(
+                    text = "HID 状态",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+                Spacer(Modifier.height(8.dp))
+                Text("profile=${state.hidDiagnostics.profileReady} · registered=${state.hidDiagnostics.appRegistered}")
+                Text("plugged=${state.hidDiagnostics.pluggedDevice ?: "无"}")
+                Text("connected=${state.hidDiagnostics.connectedDevice ?: "无"}")
+                Text(
+                    "键盘报告=${state.hidDiagnostics.lastKeyboardReport?.let { report -> "id=${report.reportId}, size=${report.size}, accepted=${report.accepted}" } ?: "无"}",
+                )
+                Text(
+                    "指针报告=${state.hidDiagnostics.lastPointerReport?.let { report -> "id=${report.reportId}, size=${report.size}, accepted=${report.accepted}" } ?: "无"}",
+                )
+                state.hidDiagnostics.lastFailure?.let { failure ->
+                    Text("最近失败=$failure", color = MaterialTheme.colorScheme.error)
+                }
+                Spacer(Modifier.height(14.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,

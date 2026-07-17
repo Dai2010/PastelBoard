@@ -4,6 +4,11 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+val releaseKeystorePath = providers.environmentVariable("PASTELBOARD_KEYSTORE_PATH").orNull
+val releaseKeystorePassword = providers.environmentVariable("PASTELBOARD_KEYSTORE_PASSWORD").orNull
+val releaseKeyAlias = providers.environmentVariable("PASTELBOARD_KEY_ALIAS").orNull
+val releaseKeyPassword = providers.environmentVariable("PASTELBOARD_KEY_PASSWORD").orNull
+
 android {
     namespace = "dev.pastel.pastelboard"
     compileSdk = 35
@@ -12,17 +17,27 @@ android {
         applicationId = "dev.pastel.pastelboard"
         minSdk = 31
         targetSdk = 35
-        versionCode = 5
-        versionName = "0.2.3-internal.1"
+        versionCode = 6
+        versionName = "0.2.3-internal.2"
 
         vectorDrawables {
             useSupportLibrary = true
         }
     }
 
+    signingConfigs {
+        create("release") {
+            storeFile = releaseKeystorePath?.let { file(it) }
+            storePassword = releaseKeystorePassword.orEmpty()
+            keyAlias = releaseKeyAlias.orEmpty()
+            keyPassword = releaseKeyPassword.orEmpty()
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -67,4 +82,5 @@ dependencies {
 
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
+    testImplementation("junit:junit:4.13.2")
 }

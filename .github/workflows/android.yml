@@ -5,13 +5,18 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: pastelboard-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
-    name: Build debug APK
+    name: Build Android APK
     runs-on: ubuntu-latest
 
     steps:
@@ -38,31 +43,116 @@ jobs:
       - name: Generate Gradle wrapper
         run: gradle wrapper --gradle-version 8.10.2
 
-      - name: Build
+      - name: Prepare historical signing key
+        if: github.event_name == 'push'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.PASTELBOARD_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.PASTELBOARD_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.PASTELBOARD_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.PASTELBOARD_KEY_PASSWORD }}
+          EXPECTED_CERT_SHA256: ${{ secrets.PASTELBOARD_SIGNING_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          test -n "$KEYSTORE_BASE64" || { echo "Missing PASTELBOARD_KEYSTORE_BASE64" >&2; exit 1; }
+          test -n "$KEYSTORE_PASSWORD" || { echo "Missing PASTELBOARD_KEYSTORE_PASSWORD" >&2; exit 1; }
+          test -n "$KEY_ALIAS" || { echo "Missing PASTELBOARD_KEY_ALIAS" >&2; exit 1; }
+          test -n "$KEY_PASSWORD" || { echo "Missing PASTELBOARD_KEY_PASSWORD" >&2; exit 1; }
+          test -n "$EXPECTED_CERT_SHA256" || { echo "Missing PASTELBOARD_SIGNING_CERT_SHA256" >&2; exit 1; }
+          signing_dir="$RUNNER_TEMP/pastelboard-signing"
+          mkdir -p "$signing_dir"
+          signing_file="$signing_dir/pastelboard-release.jks"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$signing_file"
+          chmod 600 "$signing_file"
+          test -s "$signing_file"
+          keytool -list -keystore "$signing_file" -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" >/dev/null
+          actual_cert_sha256="$(keytool -list -v -keystore "$signing_file" -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" | awk -F': ' '/SHA256:/{print $2; exit}' | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')"
+          expected_cert_sha256="$(printf '%s' "$EXPECTED_CERT_SHA256" | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')"
+          test -n "$actual_cert_sha256"
+          test "$actual_cert_sha256" = "$expected_cert_sha256" || {
+            echo "Signing certificate does not match the historical certificate." >&2
+            exit 1
+          }
+          {
+            echo "PASTELBOARD_KEYSTORE_PATH=$signing_file"
+            echo "PASTELBOARD_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
+            echo "PASTELBOARD_KEY_ALIAS=$KEY_ALIAS"
+            echo "PASTELBOARD_KEY_PASSWORD=$KEY_PASSWORD"
+            echo "PASTELBOARD_EXPECTED_CERT_SHA256=$expected_cert_sha256"
+          } >> "$GITHUB_ENV"
+
+      - name: Run HID unit tests
+        run: ./gradlew testDebugUnitTest
+
+      - name: Build signed release APK
+        if: github.event_name == 'push'
+        run: ./gradlew assembleRelease
+
+      - name: Build PR debug APK
+        if: github.event_name != 'push'
         run: ./gradlew assembleDebug
+
+      - name: Verify APK signature
+        if: github.event_name == 'push'
+        env:
+          EXPECTED_CERT_SHA256: ${{ secrets.PASTELBOARD_SIGNING_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          apk="$(find app/build/outputs/apk/release -maxdepth 1 -name '*.apk' -print -quit)"
+          test -n "$apk"
+          apksigner verify --verbose --print-certs "$apk"
+          actual_cert_sha256="$(apksigner verify --print-certs "$apk" | awk -F': ' '/certificate SHA-256 digest:/{print $2; exit}' | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')"
+          expected_cert_sha256="$(printf '%s' "$EXPECTED_CERT_SHA256" | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')"
+          test "$actual_cert_sha256" = "$expected_cert_sha256" || {
+            echo "Built APK certificate does not match the historical certificate." >&2
+            exit 1
+          }
 
       - name: Prepare release APK
         if: github.event_name == 'push'
         run: |
           mkdir -p release
-          cp app/build/outputs/apk/debug/*.apk release/PastelBoard-internal-test.apk
+          cp app/build/outputs/apk/release/*.apk release/PastelBoard-internal-test.apk
 
-      - name: Upload debug APK
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: PastelBoard-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+          name: PastelBoard-apk-${{ github.run_id }}
+          path: app/build/outputs/apk/*/*.apk
+
+      - name: Upload release candidate
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: PastelBoard-release-${{ github.run_id }}
+          path: release/PastelBoard-internal-test.apk
+
+  publish:
+    name: Publish signed internal test APK
+    if: github.event_name == 'push'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download signed APK
+        uses: actions/download-artifact@v4
+        with:
+          name: PastelBoard-release-${{ github.run_id }}
+          path: release
 
       - name: Publish internal test APK
-        if: github.event_name == 'push'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: internal-test-latest
-          name: PastelBoard 内部测试版 0.2.3-internal.1
+          target_commitish: ${{ github.sha }}
+          name: PastelBoard 内部测试版 0.2.3-internal.2
           body: |
             ⚠️ 内部测试版，请勿作为正式版分发。
 
-            版本：0.2.3-internal.1（versionCode 5）
+            版本：0.2.3-internal.2（versionCode 6）
+
+            发布前由 CI 校验 APK 使用历史版本相同的证书指纹；未配置或不匹配时不会发布。
 
             本版本用于排查「蓝牙连接成功但目标电脑无输入响应」问题：
             - 新增「内部测试日志」页面，实时记录蓝牙 HID 连接、按键、触控板与报告发送结果。

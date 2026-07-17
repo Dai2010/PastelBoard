@@ -9,6 +9,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import dev.pastel.pastelboard.bluetooth.BluetoothHidController
 import dev.pastel.pastelboard.bluetooth.HidConnectionStatus
+import dev.pastel.pastelboard.bluetooth.HidDiagnostics
 import dev.pastel.pastelboard.bluetooth.HidModifier
 import dev.pastel.pastelboard.bluetooth.HidUsage
 import dev.pastel.pastelboard.bluetooth.KeyboardReport
@@ -43,6 +44,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val uiState: StateFlow<PastelBoardUiState> = mutableUiState
         .combine(bluetoothController.devices) { state, devices ->
             state.copy(devices = devices)
+        }
+        .combine(bluetoothController.diagnostics) { state, diagnostics ->
+            state.copy(hidDiagnostics = diagnostics)
         }
         .stateIn(
             scope = viewModelScope,
@@ -286,7 +290,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (pointerMoveLogCounter % POINTER_LOG_INTERVAL == 0) {
             appendLog("PTR", "移动 dx=$deltaX dy=$deltaY")
         }
-        bluetoothController.sendPointer(PointerReport(deltaX = deltaX, deltaY = deltaY))
+        var remainingX = deltaX
+        var remainingY = deltaY
+        while (remainingX != 0 || remainingY != 0) {
+            val stepX = remainingX.coerceIn(-127, 127)
+            val stepY = remainingY.coerceIn(-127, 127)
+            bluetoothController.sendPointer(PointerReport(deltaX = stepX, deltaY = stepY))
+            remainingX -= stepX
+            remainingY -= stepY
+        }
     }
 
     fun clickPointer(button: Int = 1) {
@@ -312,12 +324,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun createDiagnosticLogText(): String {
         val state = mutableUiState.value
+        val diagnostics = bluetoothController.diagnostics.value
         return buildString {
             appendLine("PastelBoard 内部测试版日志")
             appendLine("版本: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
             appendLine("导出时间: ${LOG_TIMESTAMP_FORMAT.format(Date())}")
             appendLine("连接状态: ${state.connectionStatus}")
             appendLine("当前设备: ${state.selectedDevice?.name ?: "无"}")
+            appendLine("HID profile: ${diagnostics.profileReady}")
+            appendLine("HID app 已注册: ${diagnostics.appRegistered}")
+            appendLine("plugged device: ${diagnostics.pluggedDevice ?: "无"}")
+            appendLine("connected device: ${diagnostics.connectedDevice ?: "无"}")
+            appendLine("最近键盘报告: ${diagnostics.lastKeyboardReport ?: "无"}")
+            appendLine("最近指针报告: ${diagnostics.lastPointerReport ?: "无"}")
+            appendLine("最近失败原因: ${diagnostics.lastFailure ?: "无"}")
             appendLine("日志条数: ${state.diagnosticLogs.size}")
             appendLine("---")
             state.diagnosticLogs.forEach { entry ->
@@ -347,7 +367,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     screen = Screen.Home,
                 )
 
-                HidConnectionStatus.Disconnected -> state.copy(selectedDevice = null)
+                HidConnectionStatus.Disconnected -> state.copy(
+                    selectedDevice = null,
+                    connectionStatus = "HID 已断开，选择一个设备重新开始",
+                )
             }
         }
     }
@@ -456,6 +479,7 @@ data class PastelBoardUiState(
     val launchLandscapeEnabled: Boolean = false,
     val diagnosticLogs: List<DiagnosticLogEntry> = emptyList(),
     val logExportMessage: String? = null,
+    val hidDiagnostics: HidDiagnostics = HidDiagnostics(),
 )
 
 enum class Screen {
