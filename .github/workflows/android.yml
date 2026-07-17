@@ -102,8 +102,11 @@ jobs:
           set -euo pipefail
           apk="$(find app/build/outputs/apk/release -maxdepth 1 -name '*.apk' -print -quit)"
           test -n "$apk"
-          apksigner verify --verbose --print-certs "$apk"
-          actual_cert_sha256="$(apksigner verify --print-certs "$apk" | awk -F': ' '/certificate SHA-256 digest:/{print $2; exit}' | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')"
+          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          apksigner="$sdk_root/build-tools/35.0.0/apksigner"
+          test -x "$apksigner"
+          "$apksigner" verify --verbose --print-certs "$apk"
+          actual_cert_sha256="$("$apksigner" verify --print-certs "$apk" | awk -F': ' '/certificate SHA-256 digest:/{print $2; exit}' | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')"
           expected_cert_sha256="$(printf '%s' "$EXPECTED_CERT_SHA256" | tr -d ':[:space:]' | tr '[:lower:]' '[:upper:]')"
           test "$actual_cert_sha256" = "$expected_cert_sha256" || {
             echo "Built APK certificate does not match the configured stable certificate." >&2
