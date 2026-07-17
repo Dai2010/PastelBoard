@@ -10,13 +10,13 @@ object HidProtocol {
         get() = HID_DESCRIPTOR.copyOf()
 
     val descriptorReportIds: Set<Int> by lazy {
-        HID_DESCRIPTOR.mapIndexedNotNull { index, value ->
-            if ((value.toInt() and 0xFF) == 0x85 && index + 1 < HID_DESCRIPTOR.size) {
-                HID_DESCRIPTOR[index + 1].toInt() and 0xFF
-            } else {
-                null
+        val reportIds = mutableSetOf<Int>()
+        for (index in HID_DESCRIPTOR.indices) {
+            if ((HID_DESCRIPTOR[index].toInt() and 0xFF) == 0x85 && index + 1 < HID_DESCRIPTOR.size) {
+                reportIds += HID_DESCRIPTOR[index + 1].toInt() and 0xFF
             }
-        }.toSet()
+        }
+        reportIds
     }
 
     private val HID_DESCRIPTOR = byteArrayOf(
