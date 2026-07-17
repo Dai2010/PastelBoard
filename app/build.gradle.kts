@@ -8,6 +8,7 @@ val releaseKeystorePath = providers.environmentVariable("PASTELBOARD_KEYSTORE_PA
 val releaseKeystorePassword = providers.environmentVariable("PASTELBOARD_KEYSTORE_PASSWORD").orNull
 val releaseKeyAlias = providers.environmentVariable("PASTELBOARD_KEY_ALIAS").orNull
 val releaseKeyPassword = providers.environmentVariable("PASTELBOARD_KEY_PASSWORD").orNull
+val releaseKeystoreType = providers.environmentVariable("PASTELBOARD_KEYSTORE_TYPE").orNull
 
 android {
     namespace = "dev.pastel.pastelboard"
@@ -31,6 +32,7 @@ android {
             storePassword = releaseKeystorePassword.orEmpty()
             keyAlias = releaseKeyAlias.orEmpty()
             keyPassword = releaseKeyPassword.orEmpty()
+            storeType = releaseKeystoreType.orEmpty()
         }
     }
 
